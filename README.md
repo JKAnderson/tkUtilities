@@ -8,4 +8,4 @@ Generic logging and error-reporting.
 System config and individual .ltx reading.
 
 ## Changelog
-July 9, '17 - Created this repository.
+July 9, '17 - Added tkLogger and tkConfig
