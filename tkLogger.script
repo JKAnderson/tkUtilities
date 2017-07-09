@@ -1,0 +1,221 @@
+
+--| tkLogger 1.10
+--| By TKGP
+--| Documentation: https://github.com/JKAnderson/tkUtilities
+
+local Level = {Bug = 1, Warning = 2, Info = 3, Debug = 4}
+
+-- Global logger settings:
+
+-- Messages at least this severe will be logged
+local logLevel = Level.Debug
+-- Messages at least this severe will be sent as news messages
+local newsLevel = Level.Warning
+-- All loggers will be enabled
+local forceEnable = false
+-- Log will be flushed after every message; warning: slow!
+local flushAll = false
+-- If on, logging will use the "load" method whenever possible instead of unknown commands. Enable if you
+-- don't like hard spaces and don't care about capital letters. Only relevant for SoC.
+local socPreferLoad = false
+-- If on, logging will always use the "start" method instead of "load". Enable if you like capital letters
+-- and don't care about how much garbage there is in start messages. Only relevant for CoP.
+local copPreferStart = false
+
+-- Color code for news feed debug messages
+local DEBUG_COLOR = "%c[255,32,255,32]"
+-- Color code for news feed info messages
+local INFO_COLOR = "%c[255,32,32,255]"
+-- Color code for news feed warning messages
+local WARNING_COLOR = "%c[255,255,255,32]"
+-- Color for on-screen bug messages (SoC and CS)
+local BUG_COLOR_HUD = GetARGB(255, 255, 32, 32)
+-- Color for news feed bug messages (CoP)
+local BUG_COLOR_NEWS = "%c[255,255,0,0]"
+-- Icon for news messages
+local NEWS_ICON_SOC = Frect():set(1 * 83, 19 * 47, 83, 47)
+local NEWS_ICON_CS = "ui_iconsTotal_yan_find_scientist"
+local NEWS_ICON_COP = "ui_inGame2_PD_Opitniy_stalker"
+-- Duration of non-bug news messages
+local NEWS_DURATION = 5000
+-- Duration of bug news messages (CoP)
+local NEWS_DURATION_BUG = 10000
+-- Bug messages to display on-screen at once
+local MAX_HUD_BUGS = 30
+
+-- End of settings. Dorks only beyond this point.
+
+
+local console = get_console()
+local logger, hudBugs, bugSalt
+-- Filled at the bottom after logger is initialized
+Game = {}
+
+local function consolePrint(message)
+	if Game.SOC then
+		if alife() and socPreferLoad then
+			console:execute("load ~# "..message)
+		else
+			-- Hard space
+			console:execute(string.gsub("~# "..message, "%s", "\160"))
+		end
+	-- Unlike in CoP, this doesn't actually crash the game
+	elseif Game.CS then
+		error_log(message)
+	-- Unknown commands are very dangerous in CoP and "start" is really long, so use "load" if possible
+	elseif Game.COP then
+		if alife() and not copPreferStart then
+			console:execute("load ~# "..message)
+		else
+			console:execute("start ~# "..message)
+		end
+	end
+end
+
+----------------------------------------------------------------------------------------------------
+
+class "Logger"
+
+function Logger:__init(source, enabled)
+	if not source then
+		logger:Bug("Logger initialized without source.")
+		source = "Unknown"
+	elseif logger then
+		logger:Info("Logger initialized for %s.script.", source)
+	end
+	self.source = source
+	self.enabled = enabled or forceEnable
+end
+
+function Logger:consoleLog(name, message, ...)
+	message = message:format(...)
+	message = string.format("[%s][%s] %s", self.source, name, message)
+	consolePrint(message)
+end
+
+function Logger:newsLog(name, color, message, ...)
+	if db.actor then
+		message = message:format(...)
+		if Game.SOC then
+			message = string.format("%s[%s][%s]\\n%%c[default]%s", color, self.source, name, message)
+			db.actor:give_game_news(message, "ui\\ui_iconsTotal", NEWS_ICON_SOC, 0, NEWS_DURATION)
+		else
+			-- Color codes don't work in news caption :(
+			local caption = string.format("[%s][%s]", self.source, name)
+			if Game.CS then
+				db.actor:give_game_news(caption, message, NEWS_ICON_CS, 0, NEWS_DURATION)
+			elseif Game.COP then
+				db.actor:give_game_news(caption, message, NEWS_ICON_COP, 0, NEWS_DURATION)
+			end
+		end
+	end
+end
+
+function Logger:baseLog(level, funcName, shortName, color, message, ...)
+	message = tostring(message)
+	if logger:Confirm(message, "%s called without message. Source: %s", funcName, self.source)
+		and self.enabled and logLevel >= level then
+		self:consoleLog(shortName, message, ...)
+		if flushAll then
+			console:execute("flush")
+		end
+		if newsLevel >= level then
+			self:newsLog(shortName, color, message, ...)
+		end
+	end
+end
+
+function Logger:Debug(message, ...)
+	self:baseLog(Level.Debug, "debug", "DBG", DEBUG_COLOR, message, ...)
+end
+
+function Logger:Info(message, ...)
+	self:baseLog(Level.Info, "info", "NFO", INFO_COLOR, message, ...)
+end
+
+function Logger:Warning(message, ...)
+	self:baseLog(Level.Warning, "warning", "WRN", WARNING_COLOR, message, ...)
+end
+
+function Logger:Bug(message, ...)
+	message = tostring(message)
+	if logger:Confirm(message, "bug called without message. Source: %s", self.source) then
+		self:consoleLog("BUG", message, ...)
+		console:execute("flush")
+		if Game.SOC or Game.CS then
+			-- Trying to get_hud before the game is loaded crashes instead of just returning nil
+			local hud = alife() and get_hud()
+			if hud then
+				if not hudBugs then
+					hudBugs = {}
+					for n = 1, MAX_HUD_BUGS do
+						hud:AddCustomMessage("tklogger_bug_"..bugSalt.."_"..n,
+							20, 20 * n, 0, GetFontDI(), CGameFont.alLeft, BUG_COLOR)
+					end
+				end
+				message = "[%s][BUG] "..message
+				message = message:format(self.source, ...)
+				table.insert(hudBugs, message)
+				if #hudBugs > MAX_HUD_BUGS then
+					table.remove(hudBugs, 1)
+				end
+				for n, bugMessage in ipairs(hudBugs) do
+					hud:CustomMessageOut("tklogger_bug_"..bugSalt.."_"..n, bugMessage, BUG_COLOR_HUD)
+				end
+			end
+		elseif Game.COP then
+			if db.actor then
+				local caption = string.format("[%s][%s]", self.source, "BUG")
+				message = BUG_COLOR_NEWS..message:format(...)
+				db.actor:give_game_news(caption, message, NEWS_ICON_COP, 0, NEWS_DURATION_BUG)
+			end
+		end
+	end
+end
+
+function Logger:Confirm(condition, message, ...)
+	if not message then
+		logger:Bug("confirm called without message. Source: %s", self.source)
+	elseif not condition then
+		self:bug(message, ...)
+	end
+	return condition
+end
+
+function Logger:Raw(message, ...)
+	message = tostring(message)
+	if logger:Confirm(message, "raw called without message. Source: %s", self.source) then
+		consolePrint(message:format(...))
+	end
+end
+
+----------------------------------------------------------------------------------------------------
+
+do
+	local scriptVersion = script_server_object_version()
+	if scriptVersion <= 7 then
+		Game.SOC = true
+	elseif scriptVersion > 7 and scriptVersion < 12 then
+		Game.CS = true
+	elseif scriptVersion >= 12 then
+		Game.COP = true
+	end
+	
+	logger = Logger(script_name(), true)
+	logger:Info("%s initialized.", script_name())
+	
+	if Game.SOC or Game.CS then
+		-- If you add a custom message, load a save, and add a message with the same name, the game
+		-- crashes; there's no way to check if the message already exists or remember that it's been
+		-- added already since scripts reload each time, so this is the best I could come up with
+		bugSalt = tostring(math.random()):sub(3, 12)
+		logger:Debug("Bug salt: %s", bugSalt)
+	end
+	
+	local mt = getmetatable(this)
+	
+	-- Make tkLogger callable directly
+	mt.__call = function(script, source, enabled)
+		return Logger(source, enabled)
+	end
+end

@@ -1,0 +1,223 @@
+
+--| tkConfig 1.10
+--| By TKGP
+--| Documentation: https://github.com/JKAnderson/tkUtilities
+
+local logger = tkLogger(script_name(), true)
+System, Game = nil, nil
+
+----------------------------------------------------------------------------------------------------
+
+class "Config"
+
+function Config:__init(config)
+	self.config = config
+end
+
+function Config:GetSection(section)
+	if logger:Confirm(self.config:section_exist(section), "Section [%s] not found.", section) then
+		return Section(self, section)
+	end
+end
+
+function Config:SectionExists(section)
+	return self.config:section_exist(section)
+end
+
+function Config:FieldExists(section, field)
+	if logger:Confirm(self:SectionExists(section), "Section [%s] not found.", section) then
+		return self.config:line_exist(section, field)
+	end
+end
+
+function Config:GetBool(section, field, default)
+	if self:FieldExists(section, field) then
+		return self.config:r_bool(section, field)
+	else
+		return default
+	end
+end
+
+function Config:GetBools(section, field, default)
+	local text = self:GetString(section, field)
+	if text then
+		local list = {}
+		for item in text:gmatch("[^,%s]+") do
+			if item:lower() == "false" or item == "0" then
+				table.insert(list, false)
+			elseif item:lower() == "true" or item == "1" then
+				table.insert(list, true)
+			else
+				logger:Bug("Unrecognized bool format in [%s], field %s: %s", section, field, item)
+			end
+		end
+		return list
+	else
+		return default
+	end
+end
+
+function Config:GetFloat(section, field, default)
+	if self:FieldExists(section, field) then
+		return self.config:r_float(section, field)
+	else
+		return default
+	end
+end
+
+function Config:GetFloats(section, field, default)
+	local text = self:GetString(section, field)
+	if text then
+		local list = {}
+		for item in text:gmatch("[^,%s]+") do
+			local number = tonumber(item)
+			if number then
+				table.insert(list, number)
+			else
+				logger:Bug("Unrecognized number format in [%s], field %s: %s", section, field, item)
+			end
+		end
+		return list
+	else
+		return default
+	end
+end
+
+function Config:GetString(section, field, default)
+	if self:FieldExists(section, field) then
+		return self.config:r_string(section, field)
+	else
+		return default
+	end
+end
+
+function Config:GetStrings(section, field, default)
+	local text = self:GetString(section, field)
+	if text then
+		local list = {}
+		for item in text:gmatch("[^,%s]+") do
+			table.insert(list, item)
+		end
+		return list
+	else
+		return default
+	end
+end
+
+function Config:GetVector(section, field, default)
+	if self:FieldExists(section, field) then
+		return self.config:r_vector(section, field)
+	else
+		return default
+	end
+end
+
+function Config:GetLines(section)
+	if not logger:Confirm(self:SectionExists(section), "Section [%s] not found.", section) then
+		return {}
+	end
+	
+	local result = {}
+	local _, field, value
+	local lineCount = self.config:line_count(section)
+	for index = 0, lineCount - 1 do
+		_, field, value = self.config:r_line(section, index, "", "")
+		result[field] = value
+	end
+	return result
+end
+
+----------------------------------------------------------------------------------------------------
+
+class "Section"
+
+function Section:__init(config, section)
+	self.config = config
+	self.section = section
+end
+
+-- Arguably these could be done with a sufficiently clever __index instead,
+-- but I don't like using metatables in Xray unless I have to
+function Section:FieldExists(field)
+	return self.config:FieldExists(self.section, field)
+end
+
+function Section:GetBool(field, default)
+	return self.config:GetBool(self.section, field, default)
+end
+
+function Section:GetBools(field, default)
+	return self.config:GetBools(self.section, field, default)
+end
+
+function Section:GetFloat(field, default)
+	return self.config:GetFloat(self.section, field, default)
+end
+
+function Section:GetFloats(field, default)
+	return self.config:GetFloats(self.section, field, default)
+end
+
+function Section:GetString(field, default)
+	return self.config:GetString(self.section, field, default)
+end
+
+function Section:GetStrings(field, default)
+	return self.config:GetStrings(self.section, field, default)
+end
+
+function Section:GetVector(field, default)
+	return self.config:GetVector(self.section, field, default)
+end
+
+-- I'm not sure why you would bother getting a section object if you're just going to do this,
+-- but I won't judge you (yes I will)
+function Section:GetLines()
+	return self.config:GetLines(self.section)
+end
+
+----------------------------------------------------------------------------------------------------
+
+do
+	System = Config(system_ini())
+	Game = Config(game_ini())
+	
+	-- If you don't do this, globals (even standard Lua functions) are somehow out of scope during
+	-- metatable calls, leading to crashes and infinite recursion in __index. Baffling!
+	local _G = _G
+	local mt = getmetatable(this)
+	
+	-- Make tkConfig callable directly to load custom .ltx
+	mt.__call = function (self, iniPath, mainSection)
+		local ini
+		if _G.type(iniPath) == "string" then
+			ini = _G.ini_file(iniPath)
+		-- Not a path after all; hope it's an ini_file!
+		else
+			ini = iniPath
+			-- To simplify error message logic below
+			iniPath = nil
+		end
+		
+		if mainSection then
+			local config = Config(ini)
+			-- Not very useful message if you passed an ini_file, but oh well
+			if logger:Confirm(config:SectionExists(mainSection), "%s missing or malformed.", iniPath or "Config file") then
+				return config, config:GetSection(mainSection)
+			else
+				return config
+			end
+		else
+			return Config(ini)
+		end
+	end
+	
+	-- Enable using the script as if it were the system config
+	mt.__index = function (self, key)
+		if _G.type(Config[key]) == "function" then
+			return function (...)
+				return Config[key](System, ...)
+			end
+		end
+	end
+end
