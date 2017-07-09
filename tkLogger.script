@@ -31,7 +31,7 @@ local WARNING_COLOR = "%c[255,255,255,32]"
 -- Color for on-screen bug messages (SoC and CS)
 local BUG_COLOR_HUD = GetARGB(255, 255, 32, 32)
 -- Color for news feed bug messages (CoP)
-local BUG_COLOR_NEWS
+local BUG_COLOR_NEWS = "%c[255,255,0,0]"
 -- Icon for news messages
 local NEWS_ICON_SOC = Frect():set(1 * 83, 19 * 47, 83, 47)
 local NEWS_ICON_CS = "ui_iconsTotal_yan_find_scientist"
@@ -78,10 +78,10 @@ class "Logger"
 
 function Logger:__init(source, enabled)
 	if not source then
-		logger:bug("Logger initialized without source.")
+		logger:Bug("Logger initialized without source.")
 		source = "Unknown"
 	elseif logger then
-		logger:info("Logger initialized for %s.script.", source)
+		logger:Info("Logger initialized for %s.script.", source)
 	end
 	self.source = source
 	self.enabled = enabled or forceEnable
@@ -113,7 +113,7 @@ end
 
 function Logger:baseLog(level, funcName, shortName, color, message, ...)
 	message = tostring(message)
-	if logger:confirm(message, "%s called without message. Source: %s", funcName, self.source)
+	if logger:Confirm(message, "%s called without message. Source: %s", funcName, self.source)
 		and self.enabled and logLevel >= level then
 		self:consoleLog(shortName, message, ...)
 		if flushAll then
@@ -139,7 +139,7 @@ end
 
 function Logger:Bug(message, ...)
 	message = tostring(message)
-	if logger:confirm(message, "bug called without message. Source: %s", self.source) then
+	if logger:Confirm(message, "bug called without message. Source: %s", self.source) then
 		self:consoleLog("BUG", message, ...)
 		console:execute("flush")
 		if Game.SOC or Game.CS then
@@ -164,9 +164,11 @@ function Logger:Bug(message, ...)
 				end
 			end
 		elseif Game.COP then
-			local caption = string.format("[%s][%s]", self.source, "BUG")
-			message = BUG_COLOR_NEWS..message:format(...)
-			db.actor:give_game_news(caption, message, NEWS_ICON_COP, 0, NEWS_DURATION_BUG)
+			if db.actor then
+				local caption = string.format("[%s][%s]", self.source, "BUG")
+				message = BUG_COLOR_NEWS..message:format(...)
+				db.actor:give_game_news(caption, message, NEWS_ICON_COP, 0, NEWS_DURATION_BUG)
+			end
 		end
 	end
 end
@@ -182,7 +184,7 @@ end
 
 function Logger:Raw(message, ...)
 	message = tostring(message)
-	if logger:confirm(message, "raw called without message. Source: %s", self.source) then
+	if logger:Confirm(message, "raw called without message. Source: %s", self.source) then
 		consolePrint(message:format(...))
 	end
 end
@@ -200,12 +202,15 @@ do
 	end
 	
 	logger = Logger(script_name(), true)
-	logger:info("%s initialized.", script_name())
-	-- If you add a custom message, load a save, and add a message with the same name, the game
-	-- crashes; there's no way to check if the message already exists or remember that it's been
-	-- added already since scripts reload each time, so this is the best I could come up with
-	bugSalt = tostring(math.random()):sub(3, 12)
-	logger:debug("Bug salt: %s", bugSalt)
+	logger:Info("%s initialized.", script_name())
+	
+	if Game.SOC or Game.CS then
+		-- If you add a custom message, load a save, and add a message with the same name, the game
+		-- crashes; there's no way to check if the message already exists or remember that it's been
+		-- added already since scripts reload each time, so this is the best I could come up with
+		bugSalt = tostring(math.random()):sub(3, 12)
+		logger:Debug("Bug salt: %s", bugSalt)
+	end
 	
 	local mt = getmetatable(this)
 	
