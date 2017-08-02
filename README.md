@@ -8,4 +8,5 @@ Generic logging and error-reporting.
 System config and individual .ltx reading.
 
 ## Changelog
+Aug. 2, '17 - Update tkConfig to 1.11 and tkLogger to 1.11  
 July 9, '17 - Added tkLogger and tkConfig

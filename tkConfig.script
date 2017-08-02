@@ -1,5 +1,5 @@
 
---| tkConfig 1.10
+--| tkConfig 1.11
 --| By TKGP
 --| Documentation: https://github.com/JKAnderson/tkUtilities
 
@@ -127,6 +127,29 @@ function Config:GetLines(section)
 	return result
 end
 
+function Config:GetLinesOrdered(section)
+	if not logger:Confirm(self:SectionExists(section), "Section [%s] not found.", section) then
+		return {}
+	end
+	
+	local result = {}
+	local _, field, value
+	local lineCount = self.config:line_count(section)
+	for index = 0, lineCount - 1 do
+		_, field, value = self.config:r_line(section, index, "", "")
+		table.insert(result, {Field = field, Value = value})
+	end
+	return result
+end
+
+function Config:GetIconCoords(section)
+	local x = self:GetFloat(section, "inv_grid_x", 0) * 50
+	local y = self:GetFloat(section, "inv_grid_y", 0) * 50
+	local width = self:GetFloat(section, "inv_grid_width", 1) * 50
+	local height = self:GetFloat(section, "inv_grid_height", 1) * 50
+	return x, y, width, height
+end
+
 ----------------------------------------------------------------------------------------------------
 
 class "Section"
@@ -176,22 +199,34 @@ function Section:GetLines()
 	return self.config:GetLines(self.section)
 end
 
+function Section:GetLinesOrdered()
+	return self.config:GetLinesOrdered(self.section)
+end
+
+function Section:GetIconCoords()
+	return self.config:GetIconCoords(self.section)
+end
+
 ----------------------------------------------------------------------------------------------------
+
+function Extend(name, func)
+	Config[name] = func
+	Section[name] = function (self, ...)
+		return Config[name](self.config, self.section, ...)
+	end
+end
 
 do
 	System = Config(system_ini())
 	Game = Config(game_ini())
 	
-	-- If you don't do this, globals (even standard Lua functions) are somehow out of scope during
-	-- metatable calls, leading to crashes and infinite recursion in __index. Baffling!
-	local _G = _G
 	local mt = getmetatable(this)
 	
 	-- Make tkConfig callable directly to load custom .ltx
 	mt.__call = function (self, iniPath, mainSection)
 		local ini
-		if _G.type(iniPath) == "string" then
-			ini = _G.ini_file(iniPath)
+		if type(iniPath) == "string" then
+			ini = ini_file(iniPath)
 		-- Not a path after all; hope it's an ini_file!
 		else
 			ini = iniPath
@@ -212,9 +247,14 @@ do
 		end
 	end
 	
+	local _G = _G
 	-- Enable using the script as if it were the system config
 	mt.__index = function (self, key)
-		if _G.type(Config[key]) == "function" then
+		if _G[key] then
+			return _G[key]
+		end
+		
+		if type(Config[key]) == "function" then
 			return function (...)
 				return Config[key](System, ...)
 			end

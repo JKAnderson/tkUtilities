@@ -42,3 +42,7 @@ end
 ```
 `logger:Raw(message, ...)`  
 Writes the message to the console without adding the source name and logging level or checking if the logger is disabled. For instance, I use it to dump packet data on request.
+
+
+### Changelog
+1.11 - Fixed Confirm crashing on failure

@@ -1,5 +1,5 @@
 
---| tkLogger 1.10
+--| tkLogger 1.11
 --| By TKGP
 --| Documentation: https://github.com/JKAnderson/tkUtilities
 
@@ -177,7 +177,7 @@ function Logger:Confirm(condition, message, ...)
 	if not message then
 		logger:Bug("confirm called without message. Source: %s", self.source)
 	elseif not condition then
-		self:bug(message, ...)
+		self:Bug(message, ...)
 	end
 	return condition
 end

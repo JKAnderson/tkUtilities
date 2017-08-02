@@ -22,6 +22,8 @@ If the field is not present, returns the default if provided or nil if not.
 `GetBools, GetFloats, GetStrings(section, field, default)` Returns a numerically-indexed list of values.  
 Value in field is assumed to be space and/or comma-separated.  
 `GetLines(section)` Returns a table of all values in the section, indexed by field names.
+`GetLinesOrdered(section)` Returns a numerically-indexed table of all fields and values in the section in the order they appear in the file.
+`GetIconCoords(section)` Returns the x, y, width, and height of the give item's icon.
 
 ### Getting section objects
 If you want to read multiple fields in the same section and don't feel like typing it out each time, you can get a section object with GetSection. All of the above methods are supported except SectionExists (obviously.)  
@@ -34,3 +36,6 @@ When loading a specific .ltx, you can pass a main section name as well; it will 
 local config, section = tkConfig("scripts\\my_config.ltx", "my_section")
 section:GetString("my_field")
 ```
+
+### Changelog
+1.11 - Added GetLinesOrdered and GetIconCoords
